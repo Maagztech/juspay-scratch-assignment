@@ -15,10 +15,11 @@ const blockDefaults = {
   repeatForever: { children: [{ id: "starter-move", type: "move", steps: 10 }] },
 };
 
-const makeBlock = (type) => ({
+const makeBlock = (type, overrides = {}) => ({
   id: `${type}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   type,
-  ...JSON.parse(JSON.stringify(blockDefaults[type])),
+  ...JSON.parse(JSON.stringify(blockDefaults[type] || {})),
+  ...overrides,
 });
 
 const makeSprite = (number) => ({
@@ -196,8 +197,8 @@ export default function App() {
     );
   };
 
-  const addBlock = (type, repeatId) => {
-    const block = makeBlock(type);
+  const addBlock = (type, repeatId, blockConfig = {}) => {
+    const block = makeBlock(type, blockConfig);
     updateSelectedScript((script) => (repeatId ? appendToRepeat(script, repeatId, block) : [...script, block]));
   };
 

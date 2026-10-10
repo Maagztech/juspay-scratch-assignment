@@ -77,9 +77,17 @@ function DropZone({ onDropBlock, repeatId, compact = false }) {
     event.stopPropagation();
 
     const type = event.dataTransfer.getData("blockType");
-    if (type) {
-      onDropBlock(type, repeatId);
+    if (!type) return;
+
+    const rawConfig = event.dataTransfer.getData("blockConfig");
+    let config = {};
+    try {
+      config = rawConfig ? JSON.parse(rawConfig) : {};
+    } catch (error) {
+      config = {};
     }
+
+    onDropBlock(type, repeatId, config);
   };
 
   return (

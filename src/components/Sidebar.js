@@ -80,7 +80,48 @@ const blocks = [
 const inputClass =
   "w-12 rounded-full border border-black/10 bg-white px-1.5 py-1 text-center text-xs text-gray-800 outline-none focus:ring-2 focus:ring-white/70";
 
-function BlockShape({ block, color }) {
+const getBlockValues = (block) => ({
+  value: block.value,
+  secondValue: block.secondValue,
+});
+
+const buildBlockConfig = (block, values = {}) => {
+  const firstValue = values.value ?? block.value;
+  const secondValue = values.secondValue ?? block.secondValue;
+
+  if (block.type === "move" || block.type === "changeX" || block.type === "changeY") {
+    return { steps: Number(firstValue ?? 0) };
+  }
+
+  if (block.type === "turn") {
+    return { degrees: Number(firstValue ?? 0) };
+  }
+
+  if (block.type === "goto") {
+    return {
+      x: Number(firstValue ?? 0),
+      y: Number(secondValue ?? 0),
+    };
+  }
+
+  if (block.type === "say" || block.type === "think") {
+    return {
+      text: String(firstValue ?? ""),
+      seconds: Number(secondValue ?? 2),
+    };
+  }
+
+  if (block.type === "repeat") {
+    return { times: Number(firstValue ?? 10) };
+  }
+
+  return {};
+};
+
+function BlockShape({ block, color, values, onValueChange }) {
+  const currentValue = values?.value ?? block.value;
+  const currentSecondValue = values?.secondValue ?? block.secondValue;
+
   return (
     <div
       className="relative w-full select-none rounded-md px-3 py-2.5 text-[13px] font-medium leading-5 text-white shadow-sm transition hover:brightness-105 active:scale-[0.98]"
@@ -90,7 +131,6 @@ function BlockShape({ block, color }) {
         borderRadius: block.shape === "c" ? "7px 7px 3px 3px" : "6px",
       }}
     >
-      {/* Scratch-style top connector */}
       <span
         className="absolute -top-[4px] left-4 h-[5px] w-7 rounded-t-sm"
         style={{
@@ -106,12 +146,10 @@ function BlockShape({ block, color }) {
           <input
             aria-label={`${block.label} value`}
             className={inputClass}
-            defaultValue={block.value}
+            value={currentValue}
             draggable={false}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              block.value = e.target.value;
-            }}
+            onChange={(e) => onValueChange({ value: e.target.value })}
           />
         )}
 
@@ -123,12 +161,10 @@ function BlockShape({ block, color }) {
           <input
             aria-label={`${block.secondLabel || block.suffix} value`}
             className={inputClass}
-            defaultValue={block.secondValue}
+            value={currentSecondValue}
             draggable={false}
             onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              block.secondValue = e.target.value;
-            }}
+            onChange={(e) => onValueChange({ secondValue: e.target.value })}
           />
         )}
 
@@ -141,7 +177,6 @@ function BlockShape({ block, color }) {
         <div className="mt-2 h-5 rounded border-l-4 border-r-4 border-t-4 border-white/25" />
       )}
 
-      {/* Bottom connector */}
       <span
         className="absolute -bottom-[4px] left-4 h-[5px] w-7 rounded-b-sm"
         style={{
@@ -153,37 +188,43 @@ function BlockShape({ block, color }) {
   );
 }
 
-function PaletteBlock({ block, color, onAddBlock }) {
+function PaletteBlock({ block, color, values, onAddBlock, onValueChange }) {
+  const handleAdd = () => onAddBlock(block.type, undefined, buildBlockConfig(block, values));
+
   return (
     <div
       draggable
       role="button"
       tabIndex={0}
       aria-label={`Add ${block.label} block`}
-      onClick={() => onAddBlock(block.type)}
+      onClick={handleAdd}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onAddBlock(block.type);
+          handleAdd();
         }
       }}
       onDragStart={(event) => {
         event.dataTransfer.setData("blockType", block.type);
+        event.dataTransfer.setData("blockConfig", JSON.stringify(buildBlockConfig(block, values)));
         event.dataTransfer.setData(
           "application/x-scratch-block",
-          JSON.stringify({ type: block.type })
+          JSON.stringify({ type: block.type, config: buildBlockConfig(block, values) })
         );
         event.dataTransfer.effectAllowed = "copy";
       }}
       className="cursor-grab px-1 py-1.5 active:cursor-grabbing"
     >
-      <BlockShape block={block} color={color} />
+      <BlockShape block={block} color={color} values={values} onValueChange={onValueChange} />
     </div>
   );
 }
 
 export default function Sidebar({ onAddBlock }) {
   const [activeCategory, setActiveCategory] = useState("Motion");
+  const [blockValues, setBlockValues] = useState(() =>
+    Object.fromEntries(blocks.map((block) => [block.type, getBlockValues(block)]))
+  );
 
   const selectedCategory = categories.find(
     (category) => category.name === activeCategory
@@ -192,6 +233,16 @@ export default function Sidebar({ onAddBlock }) {
   const visibleBlocks = blocks.filter(
     (block) => block.category === activeCategory
   );
+
+  const updateBlockValue = (blockType, nextValues) => {
+    setBlockValues((current) => ({
+      ...current,
+      [blockType]: {
+        ...(current[blockType] || getBlockValues(blocks.find((block) => block.type === blockType))),
+        ...nextValues,
+      },
+    }));
+  };
 
   return (
     <aside className="flex h-full w-[290px] flex-none flex-col overflow-hidden border-r border-gray-200 bg-white">
@@ -257,7 +308,9 @@ export default function Sidebar({ onAddBlock }) {
               key={block.type}
               block={block}
               color={selectedCategory.color}
+              values={blockValues[block.type] || getBlockValues(block)}
               onAddBlock={onAddBlock}
+              onValueChange={(nextValues) => updateBlockValue(block.type, nextValues)}
             />
           ))}
         </div>
