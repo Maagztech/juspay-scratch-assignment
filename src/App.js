@@ -180,6 +180,8 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [collisionPair, setCollisionPair] = useState([]);
   const runnerRef = useRef(null);
+  const playbackSessionRef = useRef(0);
+  const pendingTimeoutsRef = useRef([]);
   const spritesRef = useRef(sprites);
   spritesRef.current = sprites;
 
@@ -219,8 +221,9 @@ export default function App() {
   };
 
   const clearBubbleAfterDelay = (spriteId, seconds) => {
-    const clearAt = Date.now() + Math.max(0.2, Number(seconds) || 0) * 1000;
-    window.setTimeout(() => {
+    const delayMs = Math.max(0.2, Number(seconds) || 0) * 1000;
+    const clearAt = Date.now() + delayMs;
+    const timerId = window.setTimeout(() => {
       setSprites((current) =>
         current.map((sprite) =>
           sprite.id === spriteId && sprite.bubbleUntil <= clearAt + 50
@@ -228,7 +231,9 @@ export default function App() {
             : sprite
         )
       );
-    }, Math.max(0.2, Number(seconds) || 0) * 1000);
+    }, delayMs);
+
+    pendingTimeoutsRef.current.push(timerId);
   };
 
   const runBlocksForSelectedSprite = (blocks) => {
@@ -273,13 +278,24 @@ export default function App() {
   };
 
   const stopPlayback = () => {
+    playbackSessionRef.current += 1;
+
     if (runnerRef.current) window.clearTimeout(runnerRef.current);
     runnerRef.current = null;
+
+    pendingTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    pendingTimeoutsRef.current = [];
+
     setIsPlaying(false);
+    setCollisionPair([]);
   };
 
   const playAll = () => {
+    const sessionId = playbackSessionRef.current + 1;
+    playbackSessionRef.current = sessionId;
+
     stopPlayback();
+    playbackSessionRef.current = sessionId;
     setIsPlaying(true);
     setCollisionPair([]);
 
@@ -290,6 +306,8 @@ export default function App() {
     const recentCollisionPairs = new Map();
 
     const step = () => {
+      if (playbackSessionRef.current !== sessionId) return;
+
       let stillRunning = false;
       const nextSprites = spritesRef.current.map((sprite) => {
         const queue = queues[sprite.id] || [];
@@ -305,6 +323,7 @@ export default function App() {
         return nextBlock ? runBlock(sprite, nextBlock) : { ...sprite, bubble: Date.now() < sprite.bubbleUntil ? sprite.bubble : null };
       });
 
+      if (playbackSessionRef.current !== sessionId) return;
       setSprites(nextSprites);
 
       const collisionIds = [];
@@ -331,8 +350,12 @@ export default function App() {
       }
 
       if (collisionIds.length > 0) {
+        if (playbackSessionRef.current !== sessionId) return;
         setCollisionPair(Array.from(new Set(collisionIds)));
-        window.setTimeout(() => setCollisionPair([]), 900);
+        const collisionTimerId = window.setTimeout(() => {
+          if (playbackSessionRef.current === sessionId) setCollisionPair([]);
+        }, 900);
+        pendingTimeoutsRef.current.push(collisionTimerId);
       }
 
       if (!stillRunning) {
@@ -340,6 +363,7 @@ export default function App() {
         return;
       }
 
+      if (playbackSessionRef.current !== sessionId) return;
       runnerRef.current = window.setTimeout(step, 50);
     };
 
