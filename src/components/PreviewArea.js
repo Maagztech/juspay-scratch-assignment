@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import CatSprite from "./CatSprite";
 
 function Bubble({ bubble }) {
@@ -63,15 +63,41 @@ export default function PreviewArea({
 }) {
   const stageRef = useRef(null);
   const [draggingSpriteId, setDraggingSpriteId] = useState(null);
+  const rafRef = useRef(null);
+  const lastEventRef = useRef(null);
 
-  const updateFromPointer = (event, spriteId) => {
-    const rect = stageRef.current.getBoundingClientRect();
-    const x = event.clientX - rect.left - rect.width / 2;
-    const y = rect.height / 2 - (event.clientY - rect.top);
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      lastEventRef.current = null;
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleStopDrag);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    onUpdateSprite(spriteId, {
-      x: Math.max(-210, Math.min(210, Math.round(x))),
-      y: Math.max(-150, Math.min(150, Math.round(y))),
+  const scheduleUpdate = () => {
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      const ev = lastEventRef.current;
+      if (!ev || !stageRef.current) {
+        rafRef.current = null;
+        return;
+      }
+
+      const rect = stageRef.current.getBoundingClientRect();
+      const x = ev.clientX - rect.left - rect.width / 2;
+      const y = rect.height / 2 - (ev.clientY - rect.top);
+
+      if (draggingSpriteId) {
+        onUpdateSprite(draggingSpriteId, {
+          x: Math.max(-210, Math.min(210, Math.round(x))),
+          y: Math.max(-150, Math.min(150, Math.round(y))),
+        });
+      }
+
+      rafRef.current = null;
     });
   };
 
@@ -79,15 +105,28 @@ export default function PreviewArea({
     event.preventDefault();
     onSelectSprite(spriteId);
     setDraggingSpriteId(spriteId);
-    updateFromPointer(event, spriteId);
+    lastEventRef.current = event;
+    scheduleUpdate();
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleStopDrag);
   };
 
   const handleMove = (event) => {
     if (!draggingSpriteId) return;
-    updateFromPointer(event, draggingSpriteId);
+    lastEventRef.current = event;
+    scheduleUpdate();
   };
 
-  const handleStopDrag = () => setDraggingSpriteId(null);
+  const handleStopDrag = () => {
+    setDraggingSpriteId(null);
+    lastEventRef.current = null;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    window.removeEventListener("mousemove", handleMove);
+    window.removeEventListener("mouseup", handleStopDrag);
+  };
 
   return (
     <div className="flex-1 h-full overflow-hidden flex flex-col bg-slate-50">
