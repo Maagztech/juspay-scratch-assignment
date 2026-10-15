@@ -22,9 +22,9 @@ function Bubble({ bubble }) {
 function StageSprite({ sprite, selected, collided, onSelectSprite, onStartDrag }) {
   return (
     <button
-      onMouseDown={(event) => onStartDrag(event, sprite.id)}
+      onPointerDown={(event) => onStartDrag(event, sprite.id)}
       onClick={() => onSelectSprite(sprite.id)}
-      className={`absolute transform -translate-x-1/2 -translate-y-1/2 focus:outline-none cursor-move transition-all duration-150 rounded-2xl ${selected ? "ring-4 ring-blue-400/60 bg-blue-50/60" : "hover:bg-blue-50/40"
+      className={`absolute transform -translate-x-1/2 -translate-y-1/2 focus:outline-none cursor-move touch-none rounded-2xl ${selected ? "ring-4 ring-blue-400/60 bg-blue-50/60" : "hover:bg-blue-50/40"
         } ${collided ? "animate-pulse" : ""}`}
       style={{
         left: `calc(50% + ${sprite.x}px)`,
@@ -62,70 +62,99 @@ export default function PreviewArea({
   onStop,
 }) {
   const stageRef = useRef(null);
-  const [draggingSpriteId, setDraggingSpriteId] = useState(null);
+  const draggingSpriteIdRef = useRef(null);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
   const rafRef = useRef(null);
   const lastEventRef = useRef(null);
 
+  const spritesRef = useRef(sprites);
+  spritesRef.current = sprites;
+
   useEffect(() => {
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-      lastEventRef.current = null;
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleStopDrag);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const scheduleUpdate = () => {
-    if (rafRef.current) return;
+    if (rafRef.current !== null) return;
+
     rafRef.current = requestAnimationFrame(() => {
-      const ev = lastEventRef.current;
-      if (!ev || !stageRef.current) {
-        rafRef.current = null;
-        return;
-      }
-
-      const rect = stageRef.current.getBoundingClientRect();
-      const x = ev.clientX - rect.left - rect.width / 2;
-      const y = rect.height / 2 - (ev.clientY - rect.top);
-
-      if (draggingSpriteId) {
-        onUpdateSprite(draggingSpriteId, {
-          x: Math.max(-210, Math.min(210, Math.round(x))),
-          y: Math.max(-150, Math.min(150, Math.round(y))),
-        });
-      }
-
       rafRef.current = null;
+
+      const event = lastEventRef.current;
+      const spriteId = draggingSpriteIdRef.current;
+      const stage = stageRef.current;
+
+      if (!event || !spriteId || !stage) return;
+
+      const rect = stage.getBoundingClientRect();
+      const offset = dragOffsetRef.current;
+
+      const mouseX = event.clientX - rect.left - rect.width / 2;
+      const mouseY = rect.height / 2 - (event.clientY - rect.top);
+
+      const x = mouseX + offset.x;
+      const y = mouseY + offset.y;
+
+      onUpdateSprite(spriteId, {
+        x: Math.max(-210, Math.min(210, Math.round(x))),
+        y: Math.max(-150, Math.min(150, Math.round(y))),
+      });
     });
   };
 
   const handleStartDrag = (event, spriteId) => {
+    if (event.button !== 0) return;
+
     event.preventDefault();
-    onSelectSprite(spriteId);
-    setDraggingSpriteId(spriteId);
+
+    const stage = stageRef.current;
+    const sprite = spritesRef.current.find(
+      (item) => item.id === spriteId
+    );
+
+    if (!stage || !sprite) return;
+
+    const rect = stage.getBoundingClientRect();
+
+    const mouseX = event.clientX - rect.left - rect.width / 2;
+    const mouseY = rect.height / 2 - (event.clientY - rect.top);
+
+    // Keep the cursor at the same point on the sprite.
+    dragOffsetRef.current = {
+      x: sprite.x - mouseX,
+      y: sprite.y - mouseY,
+    };
+
+    draggingSpriteIdRef.current = spriteId;
     lastEventRef.current = event;
+
+    onSelectSprite(spriteId);
+
+    // Capture the pointer so dragging continues outside the sprite.
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
     scheduleUpdate();
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleStopDrag);
   };
 
   const handleMove = (event) => {
-    if (!draggingSpriteId) return;
+    if (!draggingSpriteIdRef.current) return;
+
     lastEventRef.current = event;
     scheduleUpdate();
   };
 
   const handleStopDrag = () => {
-    setDraggingSpriteId(null);
+    draggingSpriteIdRef.current = null;
     lastEventRef.current = null;
-    if (rafRef.current) {
+
+    if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    window.removeEventListener("mousemove", handleMove);
-    window.removeEventListener("mouseup", handleStopDrag);
   };
 
   return (
@@ -175,9 +204,9 @@ export default function PreviewArea({
       <div className="p-5">
         <div
           ref={stageRef}
-          onMouseMove={handleMove}
-          onMouseUp={handleStopDrag}
-          onMouseLeave={handleStopDrag}
+          onPointerMove={handleMove}
+          onPointerUp={handleStopDrag}
+          onPointerCancel={handleStopDrag}
           className="relative h-80 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden select-none"
         >
           <div className="absolute inset-0 bg-gradient-to-br from-sky-50 via-white to-indigo-50" />
