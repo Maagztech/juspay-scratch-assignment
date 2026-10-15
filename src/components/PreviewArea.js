@@ -107,54 +107,54 @@ export default function PreviewArea({
   };
 
   const handleStartDrag = (event, spriteId) => {
-    if (event.button !== 0) return;
-
     event.preventDefault();
 
+    const sprite = sprites.find((s) => s.id === spriteId);
     const stage = stageRef.current;
-    const sprite = spritesRef.current.find(
-      (item) => item.id === spriteId
-    );
 
-    if (!stage || !sprite) return;
+    if (!sprite || !stage) return;
 
     const rect = stage.getBoundingClientRect();
 
+    // Mouse position in stage coordinates
     const mouseX = event.clientX - rect.left - rect.width / 2;
     const mouseY = rect.height / 2 - (event.clientY - rect.top);
 
-    // Keep the cursor at the same point on the sprite.
+    // Preserve the exact point where the sprite was grabbed
     dragOffsetRef.current = {
       x: sprite.x - mouseX,
       y: sprite.y - mouseY,
     };
 
     draggingSpriteIdRef.current = spriteId;
-    lastEventRef.current = event;
-
+    setDraggingSpriteId(spriteId);
     onSelectSprite(spriteId);
-
-    // Capture the pointer so dragging continues outside the sprite.
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-
-    scheduleUpdate();
   };
 
   const handleMove = (event) => {
-    if (!draggingSpriteIdRef.current) return;
+    const spriteId = draggingSpriteIdRef.current;
+    const stage = stageRef.current;
 
-    lastEventRef.current = event;
-    scheduleUpdate();
+    if (spriteId == null || !stage) return;
+
+    const rect = stage.getBoundingClientRect();
+
+    const mouseX = event.clientX - rect.left - rect.width / 2;
+    const mouseY = rect.height / 2 - (event.clientY - rect.top);
+
+    // Update position immediately, without RAF or animation transitions
+    const x = mouseX + dragOffsetRef.current.x;
+    const y = mouseY + dragOffsetRef.current.y;
+
+    onUpdateSprite(spriteId, {
+      x: Math.max(-210, Math.min(210, x)),
+      y: Math.max(-150, Math.min(150, y)),
+    });
   };
 
   const handleStopDrag = () => {
     draggingSpriteIdRef.current = null;
-    lastEventRef.current = null;
-
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
+    setDraggingSpriteId(null);
   };
 
   return (
